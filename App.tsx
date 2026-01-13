@@ -3,28 +3,32 @@ import React, { useState } from 'react';
 import { SQLDialect, ToolMode, SQLResult } from './types';
 import { processSQL } from './services/geminiService';
 import SqlEditor from './components/SqlEditor';
+import TechnicalDocs from './components/TechnicalDocs';
+import SettingsModal from './components/SettingsModal';
 
 const App: React.FC = () => {
   const [sqlInput, setSqlInput] = useState<string>('');
   const [schemaContext, setSchemaContext] = useState<string>('');
   const [mode, setMode] = useState<ToolMode>(ToolMode.OPTIMIZE);
-  const [sourceDialect, setSourceDialect] = useState<SQLDialect>(SQLDialect.POSTGRESQL);
+  // 將預設設為 Oracle (PL/SQL)
+  const [sourceDialect, setSourceDialect] = useState<SQLDialect>(SQLDialect.ORACLE);
   const [targetDialect, setTargetDialect] = useState<SQLDialect>(SQLDialect.MYSQL);
   const [result, setResult] = useState<SQLResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDocsOpen, setIsDocsOpen] = useState<boolean>(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3-flash-preview');
 
   const handleProcess = async () => {
     if (!sqlInput.trim()) return;
     setIsLoading(true);
     setError(null);
     try {
-      const data = await processSQL(sqlInput, mode, sourceDialect, targetDialect, schemaContext);
+      const data = await processSQL(sqlInput, mode, sourceDialect, selectedModel, targetDialect, schemaContext);
       setResult(data);
     } catch (err: any) {
-      setError(err.message === "Failed to process SQL. Please check your prompt and try again." 
-        ? "SQL 處理失敗。請檢查您的輸入並重試。" 
-        : err.message);
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -32,6 +36,14 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-950 font-sans">
+      <TechnicalDocs isOpen={isDocsOpen} onClose={() => setIsDocsOpen(false)} />
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+        selectedModel={selectedModel}
+        onModelChange={setSelectedModel}
+      />
+      
       {/* Header */}
       <header className="px-8 py-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -46,8 +58,18 @@ const App: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-4">
-          <button className="text-slate-400 hover:text-white transition-colors text-sm font-medium">技術文件</button>
-          <button className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md text-sm transition-all border border-slate-700">偏好設定</button>
+          <button 
+            onClick={() => setIsDocsOpen(true)}
+            className="text-slate-400 hover:text-white transition-colors text-sm font-medium"
+          >
+            技術文件
+          </button>
+          <button 
+            onClick={() => setIsSettingsOpen(true)}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md text-sm transition-all border border-slate-700 flex items-center gap-2"
+          >
+            <i className="fa-solid fa-sliders text-blue-500"></i> 偏好設定
+          </button>
         </div>
       </header>
 
@@ -57,7 +79,7 @@ const App: React.FC = () => {
         <aside className="w-full md:w-80 flex flex-col gap-6 shrink-0 overflow-y-auto pr-2 custom-scrollbar">
           <section className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-xl">
             <h2 className="text-sm font-semibold mb-4 text-slate-300 flex items-center gap-2">
-              <i className="fa-solid fa-sliders text-blue-500"></i> 引擎配置
+              <i className="fa-solid fa-terminal text-blue-500"></i> 引擎配置
             </h2>
             
             <div className="space-y-4">
@@ -133,7 +155,7 @@ const App: React.FC = () => {
               </>
             )}
           </button>
-        </div>
+        </aside>
 
         {/* Workspace Area */}
         <div className="flex-grow flex flex-col gap-6 overflow-hidden">
@@ -151,6 +173,7 @@ const App: React.FC = () => {
                   <div className="text-center">
                     <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                     <p className="text-blue-400 font-medium">架構師正在分析您的程式碼...</p>
+                    <p className="text-slate-500 text-[10px] mt-2 tracking-widest uppercase">Engine: {selectedModel.includes('flash') ? 'Flash' : 'Pro'}</p>
                   </div>
                 </div>
               )}
@@ -224,11 +247,14 @@ const App: React.FC = () => {
       {/* Persistent Status Bar */}
       <footer className="px-8 py-2 bg-slate-900 border-t border-slate-800 text-[10px] text-slate-500 flex justify-between items-center">
         <div className="flex gap-4">
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Gemini 3 Pro 服務中</span>
+          <span className="flex items-center gap-1">
+            <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${selectedModel.includes('flash') ? 'bg-amber-500' : 'bg-green-500'}`}></span> 
+            {selectedModel.includes('flash') ? 'Flash 極速引擎' : 'Pro 深度推理'}
+          </span>
           <span className="flex items-center gap-1"><i className="fa-solid fa-lock"></i> AES-256 加密傳輸</span>
         </div>
         <div>
-          SQL-AI Architect Pro © 2025 • 版本 1.0.4-beta
+          SQL-AI Architect Pro © 2025 • 版本 1.1.2-stable
         </div>
       </footer>
       
