@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SQLDialect, ToolMode, SQLResult } from './types';
 import { processSQL } from './services/geminiService';
 import SqlEditor from './components/SqlEditor';
@@ -10,7 +10,6 @@ const App: React.FC = () => {
   const [sqlInput, setSqlInput] = useState<string>('');
   const [schemaContext, setSchemaContext] = useState<string>('');
   const [mode, setMode] = useState<ToolMode>(ToolMode.OPTIMIZE);
-  // 將預設設為 Oracle (PL/SQL)
   const [sourceDialect, setSourceDialect] = useState<SQLDialect>(SQLDialect.ORACLE);
   const [targetDialect, setTargetDialect] = useState<SQLDialect>(SQLDialect.MYSQL);
   const [result, setResult] = useState<SQLResult | null>(null);
@@ -18,14 +17,36 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isDocsOpen, setIsDocsOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3-flash-preview');
+  const [selectedModel, setSelectedModel] = useState<string>(() => 
+    localStorage.getItem('preferred_model') || 'gemini-3-flash-preview'
+  );
+  const [customApiKey, setCustomApiKey] = useState<string>(() => 
+    localStorage.getItem('sql_ai_api_key') || ''
+  );
+
+  // 當設定變更時存入 localStorage
+  useEffect(() => {
+    localStorage.setItem('preferred_model', selectedModel);
+  }, [selectedModel]);
+
+  useEffect(() => {
+    localStorage.setItem('sql_ai_api_key', customApiKey);
+  }, [customApiKey]);
 
   const handleProcess = async () => {
     if (!sqlInput.trim()) return;
     setIsLoading(true);
     setError(null);
     try {
-      const data = await processSQL(sqlInput, mode, sourceDialect, selectedModel, targetDialect, schemaContext);
+      const data = await processSQL(
+        sqlInput, 
+        mode, 
+        sourceDialect, 
+        selectedModel, 
+        targetDialect, 
+        schemaContext,
+        customApiKey
+      );
       setResult(data);
     } catch (err: any) {
       setError(err.message);
@@ -35,17 +56,19 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-slate-950 font-sans">
+    <div className="flex flex-col h-screen overflow-hidden bg-slate-950 font-sans text-slate-200">
       <TechnicalDocs isOpen={isDocsOpen} onClose={() => setIsDocsOpen(false)} />
       <SettingsModal 
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
         selectedModel={selectedModel}
         onModelChange={setSelectedModel}
+        apiKey={customApiKey}
+        onApiKeyChange={setCustomApiKey}
       />
       
       {/* Header */}
-      <header className="px-8 py-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+      <header className="px-8 py-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-900/20">
             <i className="fa-solid fa-database text-white text-xl"></i>
@@ -68,7 +91,7 @@ const App: React.FC = () => {
             onClick={() => setIsSettingsOpen(true)}
             className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md text-sm transition-all border border-slate-700 flex items-center gap-2"
           >
-            <i className="fa-solid fa-sliders text-blue-500"></i> 偏好設定
+            <i className={`fa-solid fa-key ${customApiKey ? 'text-green-500' : 'text-amber-500'}`}></i> 偏好設定
           </button>
         </div>
       </header>
@@ -106,7 +129,7 @@ const App: React.FC = () => {
                 <select 
                   value={sourceDialect}
                   onChange={(e) => setSourceDialect(e.target.value as SQLDialect)}
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-blue-500 appearance-none"
                 >
                   {Object.values(SQLDialect).map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
@@ -118,7 +141,7 @@ const App: React.FC = () => {
                   <select 
                     value={targetDialect}
                     onChange={(e) => setTargetDialect(e.target.value as SQLDialect)}
-                    className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-sm rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-blue-500 appearance-none"
                   >
                     {Object.values(SQLDialect).map(d => <option key={d} value={d}>{d}</option>)}
                   </select>
@@ -134,7 +157,7 @@ const App: React.FC = () => {
             <textarea
               value={schemaContext}
               onChange={(e) => setSchemaContext(e.target.value)}
-              placeholder="在此貼上 DDL (Create Table) 或 JSON Schema，協助 AI 理解欄位型態與索引..."
+              placeholder="貼上 DDL (Create Table) 讓 AI 理解索引與關聯..."
               className="flex-grow w-full p-3 bg-slate-800 text-xs font-mono text-slate-400 border border-slate-700 rounded-lg outline-none focus:ring-1 focus:ring-blue-500 resize-none"
             />
           </section>
@@ -142,7 +165,7 @@ const App: React.FC = () => {
           <button
             onClick={handleProcess}
             disabled={isLoading || !sqlInput.trim()}
-            className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2"
+            className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
           >
             {isLoading ? (
               <>
@@ -187,7 +210,7 @@ const App: React.FC = () => {
           </div>
 
           {/* Analysis Panel */}
-          <div className="h-64 bg-slate-900 rounded-xl border border-slate-800 shadow-lg overflow-hidden flex flex-col">
+          <div className="h-64 bg-slate-900 rounded-xl border border-slate-800 shadow-lg overflow-hidden flex flex-col shrink-0">
             <div className="px-5 py-3 border-b border-slate-800 bg-slate-800/50 flex items-center justify-between">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                 <i className="fa-solid fa-magnifying-glass-chart text-indigo-500"></i> AI 分析與建議
@@ -198,7 +221,7 @@ const App: React.FC = () => {
               {error ? (
                 <div className="flex flex-col items-center justify-center h-full text-slate-500 italic">
                   <i className="fa-solid fa-triangle-exclamation text-3xl mb-3 text-red-500 opacity-50"></i>
-                  <p className="text-red-400">{error}</p>
+                  <p className="text-red-400 text-sm max-w-md text-center">{error}</p>
                 </div>
               ) : result ? (
                 <div className="space-y-6">
@@ -245,34 +268,21 @@ const App: React.FC = () => {
       </main>
 
       {/* Persistent Status Bar */}
-      <footer className="px-8 py-2 bg-slate-900 border-t border-slate-800 text-[10px] text-slate-500 flex justify-between items-center">
+      <footer className="px-8 py-2 bg-slate-900 border-t border-slate-800 text-[10px] text-slate-500 flex justify-between items-center shrink-0">
         <div className="flex gap-4">
           <span className="flex items-center gap-1">
             <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${selectedModel.includes('flash') ? 'bg-amber-500' : 'bg-green-500'}`}></span> 
             {selectedModel.includes('flash') ? 'Flash 極速引擎' : 'Pro 深度推理'}
           </span>
-          <span className="flex items-center gap-1"><i className="fa-solid fa-lock"></i> AES-256 加密傳輸</span>
+          <span className="flex items-center gap-1">
+            <i className={`fa-solid fa-shield-halved ${customApiKey ? 'text-blue-500' : 'text-slate-600'}`}></i> 
+            {customApiKey ? '自定義 Key 運作中' : '使用環境變數 Key'}
+          </span>
         </div>
         <div>
-          SQL-AI Architect Pro © 2025 • 版本 1.1.2-stable
+          SQL-AI Architect Pro © 2025 • v1.2.0
         </div>
       </footer>
-      
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 5px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #334155;
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #475569;
-        }
-      `}</style>
     </div>
   );
 };
